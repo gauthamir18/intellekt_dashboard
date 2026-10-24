@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const pool = require('./db');
+const registerRecordEditRoutes = require('./record_edit_requests');
 const crypto = require("node:crypto");
 const app = express();
 
@@ -137,7 +138,7 @@ app.post('/login', async (req, res) => {
 
 			return res.json({
 				success: true,
-				role: prefix === 'IG' ? 'faculty' : 'admin',
+				role: (['IG001', 'IG002'].includes(idUpper) || prefix === 'IP') ? 'admin' : 'faculty',
 				id: idUpper,
 				mustResetPassword: user.must_reset_password === true
 			});
@@ -1077,6 +1078,8 @@ app.get('/marks', async (req, res) => {
 	}
 });
 app.put('/marks/:roll_no/:test_code', async (req, res) => {
+	return res.status(403).json({ error: 'Marks edits require an approved record-edit request. Use /record-edit-requests/:id/apply.' });
+	/* Legacy direct-update implementation intentionally disabled below. */
 	const { roll_no, test_code } = req.params;
 	const { marks, comments } = req.body;
 
@@ -1570,6 +1573,9 @@ app.post('/attendance', async (req, res) => {
 				existingStudents.push(record.roll_no);
 
 				if (overwrite) {
+					await client.query('ROLLBACK');
+					return res.status(403).json({ error: 'Existing attendance cannot be overwritten directly. Submit an edit request and wait for admin approval.' });
+					/* Legacy overwrite implementation intentionally disabled below. */
 					await client.query(
 						`
 						UPDATE attendance
@@ -1636,6 +1642,8 @@ app.post('/attendance', async (req, res) => {
 	}
 });
 app.put('/attendance', async (req, res) => {
+	return res.status(403).json({ error: 'Attendance edits require an approved record-edit request. Use /record-edit-requests/:id/apply.' });
+	/* Legacy direct-update implementation intentionally disabled below. */
 	const { records, subject, facultyId } = req.body;
 	const selectedDate = req.body.date || req.body.attendanceDate;
 
@@ -4052,6 +4060,8 @@ app.get('/faculty-roles', async (req, res) => {
 		res.status(500).json({ error: 'Failed to fetch faculty roles' });
 	}
 });
+registerRecordEditRoutes(app, pool);
+
 /* =========================================================
 	SERVER START
 	========================================================= */
