@@ -251,7 +251,13 @@ function registerRecordEditRoutes(app, pool) {
               'SELECT status AS current_value FROM attendance WHERE UPPER(TRIM(roll_no)) = UPPER(TRIM($1)) AND subject_id = $2 AND attendance_date = $3',
               [request.roll_no, request.subject_id, request.attendance_date]
             );
-        if (!currentResult.rows.length || String(currentResult.rows[0].current_value) !== String(request.original_value)) {
+        const currentValue = currentResult.rows.length ? String(currentResult.rows[0].current_value).trim() : '';
+        const originalValue = String(request.original_value).trim();
+        const valuesMatch = request.record_type === 'marks' &&
+            currentValue.toUpperCase() !== 'A' && originalValue.toUpperCase() !== 'A'
+          ? Number(currentValue) === Number(originalValue)
+          : currentValue.toUpperCase() === originalValue.toUpperCase();
+        if (!currentResult.rows.length || !valuesMatch) {
           await client.query('ROLLBACK');
           return res.status(409).json({ error: 'This record changed after the request was submitted. Please submit a new edit request.' });
         }
