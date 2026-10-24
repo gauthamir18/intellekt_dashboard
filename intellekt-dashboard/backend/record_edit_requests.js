@@ -131,7 +131,7 @@ function registerRecordEditRoutes(app, pool) {
            AND COALESCE(UPPER(TRIM(test_code)), '') = COALESCE(UPPER(TRIM($3)), '')
            AND COALESCE(subject_id, 0) = COALESCE($4, 0)
            AND COALESCE(attendance_date, DATE '1900-01-01') = COALESCE($5::date, DATE '1900-01-01')
-           AND status = 'Pending' LIMIT 1`,
+           AND status IN ('Pending', 'Approved') LIMIT 1`,
         [type, roll, testCodeValue, subjectIdValue, attendanceDateValue]
       );
       if (pending.rows.length) return res.status(409).json({ error: 'An edit request for this record is already pending.' });
@@ -242,6 +242,19 @@ function registerRecordEditRoutes(app, pool) {
           return res.status(403).json({ error: 'No approved edit permission exists for this record.' });
         }
         const request = requestResult.rows[0];
+        const currentResult = request.record_type === 'marks'
+          ? await client.query(
+              'SELECT marks_obtained AS current_value FROM marks WHERE UPPER(TRIM(roll_no)) = UPPER(TRIM($1)) AND UPPER(TRIM(test_code)) = UPPER(TRIM($2))',
+              [request.roll_no, request.test_code]
+            )
+          : await client.query(
+              'SELECT status AS current_value FROM attendance WHERE UPPER(TRIM(roll_no)) = UPPER(TRIM($1)) AND subject_id = $2 AND attendance_date = $3',
+              [request.roll_no, request.subject_id, request.attendance_date]
+            );
+        if (!currentResult.rows.length || String(currentResult.rows[0].current_value) !== String(request.original_value)) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({ error: 'This record changed after the request was submitted. Please submit a new edit request.' });
+        }
         if (!newValue) {
           await client.query('ROLLBACK');
           return res.status(400).json({ error: 'newValue is required.' });
