@@ -6,7 +6,7 @@ function registerRecordEditRoutes(app, pool) {
   let schemaReady;
   const ensureSchema = () => {
     if (!schemaReady) {
-      schemaReady = pool.query(\`
+      schemaReady = pool.query(`
         CREATE TABLE IF NOT EXISTS record_edit_requests (
           id BIGSERIAL PRIMARY KEY,
           record_type VARCHAR(20) NOT NULL CHECK (record_type IN ('marks', 'attendance')),
@@ -31,7 +31,7 @@ function registerRecordEditRoutes(app, pool) {
           ON record_edit_requests(status, created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_record_edit_requests_requester
           ON record_edit_requests(requested_by, status);
-      \`).catch((error) => {
+      `).catch((error) => {
         schemaReady = null;
         throw error;
       });
@@ -78,12 +78,12 @@ function registerRecordEditRoutes(app, pool) {
       if (type === 'marks') {
         if (!test_code) return res.status(400).json({ error: 'test_code is required for marks edits.' });
         studentResult = await pool.query(
-          \`SELECT s.name, m.marks_obtained AS original_value
+          `SELECT s.name, m.marks_obtained AS original_value
            FROM students s
            JOIN marks m ON UPPER(TRIM(m.roll_no)) = UPPER(TRIM(s.roll_no))
            WHERE UPPER(TRIM(s.roll_no)) = UPPER(TRIM($1))
              AND UPPER(TRIM(m.test_code)) = UPPER(TRIM($2))
-           LIMIT 1\`,
+           LIMIT 1`,
           [roll, test_code]
         );
         testCodeValue = String(test_code).trim();
@@ -107,12 +107,12 @@ function registerRecordEditRoutes(app, pool) {
           return res.status(400).json({ error: 'A valid attendance_date, subject_id and Present/Absent value are required.' });
         }
         studentResult = await pool.query(
-          \`SELECT s.name, a.status AS original_value
+          `SELECT s.name, a.status AS original_value
            FROM students s
            JOIN attendance a ON UPPER(TRIM(a.roll_no)) = UPPER(TRIM(s.roll_no))
            WHERE UPPER(TRIM(s.roll_no)) = UPPER(TRIM($1))
              AND a.subject_id = $2 AND a.attendance_date = $3
-           LIMIT 1\`,
+           LIMIT 1`,
           [roll, subject, date]
         );
         if (!studentResult.rows.length) return res.status(404).json({ error: 'Attendance record not found.' });
@@ -126,30 +126,30 @@ function registerRecordEditRoutes(app, pool) {
       }
 
       const pending = await pool.query(
-        \`SELECT id FROM record_edit_requests
+        `SELECT id FROM record_edit_requests
          WHERE record_type = $1 AND UPPER(TRIM(roll_no)) = UPPER(TRIM($2))
            AND COALESCE(UPPER(TRIM(test_code)), '') = COALESCE(UPPER(TRIM($3)), '')
            AND COALESCE(subject_id, 0) = COALESCE($4, 0)
            AND COALESCE(attendance_date, DATE '1900-01-01') = COALESCE($5::date, DATE '1900-01-01')
-           AND status = 'Pending' LIMIT 1\`,
+           AND status = 'Pending' LIMIT 1`,
         [type, roll, testCodeValue, subjectIdValue, attendanceDateValue]
       );
       if (pending.rows.length) return res.status(409).json({ error: 'An edit request for this record is already pending.' });
 
       const inserted = await pool.query(
-        \`INSERT INTO record_edit_requests
+        `INSERT INTO record_edit_requests
           (record_type, roll_no, student_name, test_code, subject_id, attendance_date,
            original_value, requested_value, requested_by, requested_by_name)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-         RETURNING *\`,
+         RETURNING *`,
         [type, roll, studentResult.rows[0].name, testCodeValue, subjectIdValue,
           attendanceDateValue, originalValue, requested, requester, facultyResult.rows[0].name]
       );
 
-      const message = \`\${facultyResult.rows[0].name} requested edit access for \${studentResult.rows[0].name}'s \${type} record.\`;
+      const message = `${facultyResult.rows[0].name} requested edit access for ${studentResult.rows[0].name}'s ${type} record.`;
       await pool.query(
-        \`INSERT INTO faculty_notifications (faculty_id, module_name, message)
-         VALUES ('IG001', 'record-edit-request', $1), ('IG002', 'record-edit-request', $1)\`,
+        `INSERT INTO faculty_notifications (faculty_id, module_name, message)
+         VALUES ('IG001', 'record-edit-request', $1), ('IG002', 'record-edit-request', $1)`,
         [message]
       );
       return res.status(201).json({ message: 'Edit request sent to the admins.', request: inserted.rows[0] });
@@ -165,8 +165,8 @@ function registerRecordEditRoutes(app, pool) {
     try {
       await ensureSchema();
       const result = await pool.query(
-        \`SELECT * FROM record_edit_requests
-         ORDER BY CASE WHEN status = 'Pending' THEN 0 ELSE 1 END, created_at DESC\`
+        `SELECT * FROM record_edit_requests
+         ORDER BY CASE WHEN status = 'Pending' THEN 0 ELSE 1 END, created_at DESC`
       );
       res.json(result.rows);
     } catch (error) {
@@ -181,9 +181,9 @@ function registerRecordEditRoutes(app, pool) {
     try {
       await ensureSchema();
       const result = await pool.query(
-        \`SELECT * FROM record_edit_requests
+        `SELECT * FROM record_edit_requests
          WHERE requested_by = $1 AND status = 'Approved'
-         ORDER BY reviewed_at DESC\`,
+         ORDER BY reviewed_at DESC`,
         [facultyId]
       );
       res.json(result.rows);
@@ -202,20 +202,20 @@ function registerRecordEditRoutes(app, pool) {
     try {
       await ensureSchema();
       const result = await pool.query(
-        \`UPDATE record_edit_requests
+        `UPDATE record_edit_requests
          SET status = $1, reviewed_by = $2, review_note = $3, reviewed_at = CURRENT_TIMESTAMP
          WHERE id = $4 AND status = 'Pending'
-         RETURNING *\`,
+         RETURNING *`,
         [decision === 'approve' ? 'Approved' : 'Declined', adminId, note, req.params.id]
       );
       if (!result.rows.length) return res.status(404).json({ error: 'Pending edit request not found.' });
       const request = result.rows[0];
       await pool.query(
-        \`INSERT INTO faculty_notifications (faculty_id, module_name, message)
-         VALUES ($1, 'record-edit-result', $2)\`,
-        [request.requested_by, \`Your edit request #\${request.id} was \${request.status.toLowerCase()} by \${adminId}.\`]
+        `INSERT INTO faculty_notifications (faculty_id, module_name, message)
+         VALUES ($1, 'record-edit-result', $2)`,
+        [request.requested_by, `Your edit request #${request.id} was ${request.status.toLowerCase()} by ${adminId}.`]
       );
-      res.json({ message: \`Edit request \${request.status.toLowerCase()}.\`, request });
+      res.json({ message: `Edit request ${request.status.toLowerCase()}.`, request });
     } catch (error) {
       console.error('PUT edit request review error:', error);
       res.status(500).json({ error: 'Could not review edit request.' });
@@ -232,9 +232,9 @@ function registerRecordEditRoutes(app, pool) {
       try {
         await client.query('BEGIN');
         const requestResult = await client.query(
-          \`SELECT * FROM record_edit_requests
+          `SELECT * FROM record_edit_requests
            WHERE id = $1 AND requested_by = $2 AND status = 'Approved'
-           FOR UPDATE\`,
+           FOR UPDATE`,
           [req.params.id, facultyId]
         );
         if (!requestResult.rows.length) {
@@ -271,8 +271,8 @@ function registerRecordEditRoutes(app, pool) {
           const total = Number(totalResult.rows[0].total_marks);
           const comment = clean === 'A' ? 'Absent' : Number(clean) / total * 100 >= 90 ? 'Excellent' : Number(clean) / total * 100 >= 75 ? 'Very Good' : Number(clean) / total * 100 >= 60 ? 'Good' : Number(clean) / total * 100 >= 40 ? 'Average' : 'Needs Improvement';
           await client.query(
-            \`UPDATE marks SET marks_obtained = $1, comments = $2
-             WHERE UPPER(TRIM(roll_no)) = UPPER(TRIM($3)) AND UPPER(TRIM(test_code)) = UPPER(TRIM($4))\`,
+            `UPDATE marks SET marks_obtained = $1, comments = $2
+             WHERE UPPER(TRIM(roll_no)) = UPPER(TRIM($3)) AND UPPER(TRIM(test_code)) = UPPER(TRIM($4))`,
             [clean, comment, request.roll_no, request.test_code]
           );
         } else {
@@ -281,9 +281,9 @@ function registerRecordEditRoutes(app, pool) {
             return res.status(400).json({ error: 'Attendance must be Present or Absent.' });
           }
           const updated = await client.query(
-            \`UPDATE attendance SET status = $1, edited_by = $2, edited_at = CURRENT_TIMESTAMP
+            `UPDATE attendance SET status = $1, edited_by = $2, edited_at = CURRENT_TIMESTAMP
              WHERE UPPER(TRIM(roll_no)) = UPPER(TRIM($3)) AND subject_id = $4 AND attendance_date = $5
-             RETURNING roll_no\`,
+             RETURNING roll_no`,
             [newValue, facultyId, request.roll_no, request.subject_id, request.attendance_date]
           );
           if (!updated.rows.length) {
@@ -292,8 +292,8 @@ function registerRecordEditRoutes(app, pool) {
           }
         }
         await client.query(
-          \`UPDATE record_edit_requests SET status = 'Applied', applied_at = CURRENT_TIMESTAMP
-           WHERE id = $1\`,
+          `UPDATE record_edit_requests SET status = 'Applied', applied_at = CURRENT_TIMESTAMP
+           WHERE id = $1`,
           [request.id]
         );
         await client.query('COMMIT');
