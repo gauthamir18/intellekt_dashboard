@@ -899,6 +899,15 @@ app.post('/marks', async (req, res) => {
 
 	try {
 		for (const record of records) {
+			const existingMark = await pool.query(
+				`SELECT 1 FROM marks WHERE UPPER(TRIM(roll_no)) = UPPER(TRIM($1)) AND UPPER(TRIM(test_code)) = UPPER(TRIM($2)) LIMIT 1`,
+				[record.roll_no, record.test_code]
+			);
+			if (existingMark.rows.length) {
+				return res.status(409).json({ error: `Marks already exist for ${record.roll_no} and ${record.test_code}. Submit an edit request and wait for admin approval.` });
+			}
+		}
+		for (const record of records) {
 			if (record.marks === undefined || record.marks === null || record.marks === '') {
 				continue;
 			}
@@ -1150,6 +1159,8 @@ const newComment = (() => {
 	}
 });
 app.put('/update-marks', async (req, res) => {
+	return res.status(403).json({ error: 'Marks edits require an approved record-edit request. Use /record-edit-requests/:id/apply.' });
+	/* Legacy direct-update implementation intentionally disabled below. */
 	const { name, test_code, marks_obtained } = req.body;
 
 	try {
